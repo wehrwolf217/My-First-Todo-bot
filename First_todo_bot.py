@@ -2,18 +2,20 @@
 
 import datetime
 import pickle
+
 import telebot
 from telebot import types
 
-token = ''  # ваш токен
+token = ''
 
 bot = telebot.TeleBot(token)
 
 todo = {}
 
 keyboard_main = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
-keyboard_main.add('справка ❓', 'добавить задачу 📝', 'показать все задачи 📋', 'показать задачи на дату 📆',
-                  'удалить 🗑', row_width=2)
+keyboard_main.add('/start', 'справка ❓', 'добавить задачу 📝', 'показать все задачи 📋', 'показать задачи на дату 📆',
+                  'удалить 🗑',
+                  row_width=2)
 
 keyboard_add = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
 keyboard_add.add('добавить задачу 📝', 'сохранить 💾', 'назад 🔄', row_width=2)
@@ -24,10 +26,10 @@ keyboard_del.add('удалить все задачи на дату 📑🚮', '�
 
 @bot.message_handler(commands='start')
 def bot_start(message):
-    """начало работы бота подгружаем наш файлик и определяем пользователя,
+    """начало работы бота подгружаем нашу бд и определяем пользователя,
      если был то его словарь если нет, то создаем новый"""
     name = message.from_user.first_name
-    filename = f'./todo.txt'  # путь к файлу со словарем
+    filename = f'/home/wehrwolf/todo.txt'
     dict_name = message.from_user.id
     with open(filename, 'rb') as f:
         global todo
@@ -40,6 +42,16 @@ def bot_start(message):
             bot.register_next_step_handler(msg, process_step)
             todo[dict_name] = dict()
     return todo.update()
+
+
+def create_file(message):
+    """сохраняет в файл изменения сделанные в словаре"""
+    name = message.from_user.first_name
+    filename = f'/home/wehrwolf/todo.txt'
+    with open(filename, 'wb') as f:
+        pickle.dump(todo, f)
+    msg = bot.send_message(message.chat.id, f'изменения сохранены для пользователя {name}', reply_markup=keyboard_main)
+    bot.register_next_step_handler(msg, process_step)
 
 
 def process_step(message):
@@ -66,10 +78,24 @@ def process_step(message):
         bot.register_next_step_handler(msg, process_step)
 
 
+def output_date(t_date):
+    """преобразует данные из словаря для вывода пользователю
+    на вход принимает дату и список задач"""
+    task_date = datetime.date.strftime(t_date, "%d-%m-%Y")
+    return task_date
+
+
+def output_task(list_of_tasks):
+    task_string = str('\n'.join('%d  %s' % (i, s) for i, s in enumerate(list_of_tasks, 1)))
+    return task_string
+
+
 def bot_help(message):
     """возможно в будущем будет информация о функциях, или контактах для связи..."""
     name = message.from_user.first_name
-    msg = bot.send_message(message.chat.id, f'Добрый день {name}, я работаю только с командами из клавиатуры',
+    msg = bot.send_message(message.chat.id,
+                           f'Добрый день {name}, я работаю только с командами из клавиатуры, '
+                           f'если бот не отвечает на команда нажмите кнопку /start',
                            reply_markup=keyboard_main)
     bot.register_next_step_handler(msg, process_step)
 
@@ -112,25 +138,16 @@ def process_add_task(task_date, message):
     bot.register_next_step_handler(msg, process_step)
 
 
-def create_file(message):
-    """сохраняет в файл изменения сделанные в словаре"""
-    name = message.from_user.first_name
-    filename = f'./todo.txt'
-    with open(filename, 'wb') as f:
-        pickle.dump(todo, f)
-    msg = bot.send_message(message.chat.id, f'изменения сохранены для пользователя {name}', reply_markup=keyboard_main)
-    bot.register_next_step_handler(msg, process_step)
-
-
 def print_all(message):
     """выводит все задачи из словаря пользователя"""
     dict_name = message.from_user.id
     if todo[dict_name]:
-        for t_date, tasks in sorted(todo[dict_name].items()):
-            t_date = datetime.date.strftime(t_date, "%d-%m-%Y")  # преобразуем в формат даты снг
-            string = str('\n'.join('%d  %s' % (i, s) for i, s in enumerate(tasks, 1)))
-            bot.send_message(message.chat.id, f"Вот список задач на {t_date}:\n{string}")
-        msg = bot.send_message(message.chat.id, f"Сделал дело, гуляй смело!", reply_markup=keyboard_main)
+        for t_date, tasks in sorted(todo[dict_name].items())[:-1]:
+            bot.send_message(message.chat.id, f"{output_date(t_date)}:\n{output_task(tasks)}")
+        # чтоб не писать непонятное сообщение преобразуем последнюю задачу
+        last_task = sorted(todo[dict_name].items())[-1]
+        msg = bot.send_message(message.chat.id, f"{output_date(last_task[0])}:\n{output_task(last_task[1])}",
+                               reply_markup=keyboard_main)
         bot.register_next_step_handler(msg, process_step)
     else:
         msg = bot.send_message(message.chat.id, 'У вас еще нет задач', reply_markup=keyboard_main)
@@ -152,9 +169,8 @@ def process_print_date(message):
         task_date = datetime.date(year, month, day)
         if task_date in todo[dict_name]:
             tasks = todo[dict_name][task_date]
-            string = str('\n'.join('%d  %s' % (i, t) for i, t in enumerate(tasks, 1)))
-            t_date = datetime.date.strftime(task_date, "%d-%m-%Y")
-            msg = bot.send_message(message.chat.id, f"Вот список задач на {t_date}:\n{string}",
+            msg = bot.send_message(message.chat.id, f"Вот список задач на {output_date(task_date)}:"
+                                                    f"\n{output_task(tasks)}",
                                    reply_markup=keyboard_main)
             bot.register_next_step_handler(msg, process_step)
         else:
@@ -181,9 +197,8 @@ def choice_del(message):
         task_date = datetime.date(year, month, day)
         if task_date in todo[dict_name]:
             tasks = todo[dict_name][task_date]
-            string = str('\n'.join('%d  %s' % (i, t) for i, t in enumerate(tasks, 1)))
-            t_date = datetime.date.strftime(task_date, "%d-%m-%Y")
-            msg = bot.send_message(message.chat.id, f"Вот список задач на {t_date}:\n{string}",
+            msg = bot.send_message(message.chat.id, f"Вот список задач на {output_date(task_date)}:"
+                                                    f"\n{output_task(tasks)}",
                                    reply_markup=keyboard_del)
             bot.register_next_step_handler(msg, lambda msg1: process_del(task_date, msg1))
         else:
@@ -221,14 +236,13 @@ def del_one_task(task_date, message):
                 del todo[dict_name][task_date]
                 todo.update()
                 create_file(message)
-                bot.send_message(message.chat.id, f'задачи на эту дату удалены', reply_markup=keyboard_main)
+                bot.send_message(message.chat.id, f'все задачи на эту дату удалены', reply_markup=keyboard_main)
             else:
                 todo.update()
                 create_file(message)
                 tasks = todo[dict_name][task_date]
-                string = str('\n'.join('%d  %s' % (i, t) for i, t in enumerate(tasks, 1)))
-                t_date = datetime.date.strftime(task_date, "%d-%m-%Y")
-                bot.send_message(message.chat.id, f"Вот список оставшихся задач на {t_date}:\n{string}",
+                bot.send_message(message.chat.id, f"Вот список оставшихся задач на {output_date(task_date)}:"
+                                                  f"\n{output_task(tasks)}",
                                  reply_markup=keyboard_main)
         except IndexError:
             msg = bot.send_message(message.chat.id, 'такого номера нет в списке', reply_markup=keyboard_main)
@@ -238,4 +252,11 @@ def del_one_task(task_date, message):
         bot.register_next_step_handler(msg, process_step)
 
 
-bot.polling(none_stop=True)
+# заглушка если по каким-то причинам потеряет связь
+while True:
+    try:
+        bot.polling(none_stop=True)
+    except Exception as e:
+        print(e)
+        pass
+        print('нужен был перезапуск для пользователя')
