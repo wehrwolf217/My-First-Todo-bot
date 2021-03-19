@@ -24,7 +24,7 @@ keyboard_del = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard
 keyboard_del.add('удалить все задачи на дату 📑🚮', 'удалить одну задачу 📃🚮', 'назад 🔄', row_width=2)
 
 
-@bot.message_handler(commands='start')
+@bot.message_handler(commands=['start'])
 def bot_start(message):
     """начало работы бота подгружаем нашу бд и определяем пользователя,
      если был то его словарь если нет, то создаем новый"""
